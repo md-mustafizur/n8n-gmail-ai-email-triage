@@ -6,6 +6,10 @@ This is a practice project based on a real freelance job requirement. It was bui
 
 ![Workflow canvas](workflow-canvas.png.png)
 
+## Demo
+
+Video walkthrough on LinkedIn: https://lnkd.in/p/gwy7K7bZ
+
 ## What it does
 
 - Picks up new emails automatically with a Gmail Trigger (checks every minute, up to 3 emails per check)
