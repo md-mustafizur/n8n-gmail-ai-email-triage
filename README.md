@@ -4,6 +4,8 @@ An AI email triage workflow built with n8n, Gmail, Google Gemini and Telegram. I
 
 This is a practice project based on a real freelance job requirement. It was built and tested on a dedicated test Gmail account with dummy emails. No real client mailbox was used.
 
+![Workflow canvas](workflow-canvas.png.png)
+
 ## What it does
 
 - Picks up new emails automatically with a Gmail Trigger (checks every minute, up to 3 emails per check)
