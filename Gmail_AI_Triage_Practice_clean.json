@@ -1,0 +1,506 @@
+{
+  "name": "Gmail AI Triage — Practice",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -960,
+        0
+      ],
+      "id": "67f2ef6d-0a72-40d1-a093-fbcff553c53a",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "limit": 7,
+        "simple": false,
+        "filters": {
+          "q": "from:YOUR_SENDER_EMAIL@gmail.com -label:AI-Billing -label:AI-Client -label:AI-Important -label:AI-Informational -label:AI-LowValue -label:AI-NeedsReview -label:AI-Routine -label:AI-Urgent"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        -736,
+        0
+      ],
+      "id": "d2d0875c-53a3-4464-a3c3-be4b4cb1e83c",
+      "name": "Get many messages",
+      "webhookId": "bc0d6020-6271-486f-9d46-2339317422ca",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are an email triage assistant. Classify the email into exactly one category: Urgent, Important, Client, Billing, Routine, Informational, Low Value.\nReturn only valid JSON with these keys: category, priority (high, medium or low), summary, suggested_reply, needs_human (true or false). No extra text.\nRules for suggested_reply: write a complete reply that needs no editing. Never use placeholders or brackets such as [Name] or [Sender Name]. Start with \"Hello,\" and end with \"Best regards\". If no reply is needed, return an empty string.\nCategory rules: invoices, payment reminders and overdue payments are Billing. Use Urgent only for outages, security problems, or deadlines within 24 hours.\nEmail subject: {{ $json.subject }}\nEmail body: {{ $json.text }}",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        -288,
+        96
+      ],
+      "id": "139b7f79-f531-4c59-933d-f4b931fe5788",
+      "name": "Basic LLM Chain"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.5-flash",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        -224,
+        336
+      ],
+      "id": "f64c790e-6dc3-4332-a11a-db63bdd5f080",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": null,
+          "name": "",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const raw = $json.text;\nconst clean = raw.replace(/```json|```/g, '').trim();\nlet data;\ntry {\n  data = JSON.parse(clean);\n} catch (e) {\n  data = { category: 'NeedsReview', priority: 'low', summary: 'AI response invalid', suggested_reply: '', needs_human: true };\n}\nconst src = $('Edit Fields').item.json;\ndata.id = src.id;\ndata.threadId = src.threadId;\ndata.subject = src.subject;\ndata.from_email = src.from_email || '';\nreturn { json: data };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        64,
+        96
+      ],
+      "id": "a8ba0540-874f-4567-9bfb-77d77f8fba67",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "resource": "label",
+        "returnAll": true
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        288,
+        96
+      ],
+      "id": "d0760ea3-ebb9-405b-a293-7cdb6d368904",
+      "name": "Get many labels",
+      "webhookId": "f49d185b-8b9a-46ad-afa7-7faa524e61d0",
+      "executeOnce": true,
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const labels = $input.all().map(i => i.json);\nconst items = $('Code in JavaScript').all();\nconst findId = (name) => labels.find(l => l.name === name)?.id;\n\nreturn items.map(item => {\n  const d = item.json;\n  let labelName = 'AI-' + String(d.category || '').replace(/\\s+/g, '');\n  let labelId = findId(labelName);\n  if (!labelId) {\n    labelName = 'AI-NeedsReview';\n    labelId = findId(labelName);\n  }\n  return { json: { ...d, label_name: labelName, label_id: labelId || '' } };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        512,
+        96
+      ],
+      "id": "0ea4e084-433d-42f3-8874-0b11e1acb688",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $json.id }}",
+        "labelIds": "={{ [$json.label_id] }}"
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        736,
+        -192
+      ],
+      "id": "315236e4-f954-4db9-b002-cae502990b68",
+      "name": "Add label to message",
+      "webhookId": "8ebd0226-6f34-4720-ada6-7a31cc55577b",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c2b77a14-5f66-40cc-a81c-b8e9adf0cadf",
+              "leftValue": "={{ $json.suggested_reply }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        736,
+        0
+      ],
+      "id": "08bb0db7-42aa-4645-a6a1-86d874bdb624",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "resource": "draft",
+        "subject": "=Re: {{ $json.subject }}",
+        "message": "={{ $json.suggested_reply }}",
+        "options": {
+          "threadId": "={{ $json.threadId }}",
+          "sendTo": "={{ $json.from_email }}"
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        976,
+        -80
+      ],
+      "id": "56f19f20-b2f7-4843-b436-691f44505f18",
+      "name": "Create a draft",
+      "webhookId": "fe4250cb-f74b-4672-847d-079bfae144f5",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "47e66abe-3ff2-47c4-8040-c7ed604957a8",
+              "leftValue": "={{ $json.category }}",
+              "rightValue": "Urgent",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        736,
+        192
+      ],
+      "id": "b9b7cad8-98b4-4d7c-953a-7d91f67bfa8b",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "=URGENT EMAIL Subject: {{ $json.subject }} From: {{ $json.from_email }} Summary: {{ $json.summary }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        976,
+        112
+      ],
+      "id": "c5ef973f-5589-4b52-a337-2bd9944d1126",
+      "name": "Send a text message",
+      "webhookId": "9e7e3d33-e3da-4ffd-b9d0-c46ac175eeb4",
+      "credentials": {
+        "telegramApi": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all().map(i => i.json);\nconst report = {};\n\nfor (const d of items) {\n  const cat = d.category || 'NeedsReview';\n  if (!report[cat]) {\n    report[cat] = { category: cat, count: 0, high_priority: 0, needs_human: 0, subjects: [], summaries: [] };\n  }\n  report[cat].count++;\n  if (d.priority === 'high') report[cat].high_priority++;\n  if (d.needs_human) report[cat].needs_human++;\n  report[cat].subjects.push(d.subject);\n  report[cat].summaries.push(d.summary);\n}\n\nreturn Object.values(report).map(r => ({\n  json: { ...r, subjects: r.subjects.join(' | '), summaries: r.summaries.join(' | ') }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        736,
+        384
+      ],
+      "id": "760073f1-e661-4ff1-ace6-31648bd3791f",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "simple": false,
+        "maxResults": 3,
+        "filters": {},
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -736,
+        192
+      ],
+      "id": "038f2a0c-5c78-460b-b8d1-e40f41d8ff66",
+      "name": "Gmail Trigger",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "4183e9ee-5870-4478-8474-d1f924ea2510",
+              "name": "id",
+              "value": "={{ $json.id }}",
+              "type": "string"
+            },
+            {
+              "id": "fb35e342-ad22-416d-bab7-9e9fbb7305eb",
+              "name": "threadId",
+              "value": "={{ $json.threadId }}",
+              "type": "string"
+            },
+            {
+              "id": "f62f8837-2126-4a7e-8c6a-e1ca1801287a",
+              "name": "subject",
+              "value": "={{ $json.subject }}",
+              "type": "string"
+            },
+            {
+              "id": "df8db751-b15a-4fa6-bd5d-a3d89e25ad5d",
+              "name": "from_email",
+              "value": "={{ $json.from.value[0].address }}",
+              "type": "string"
+            },
+            {
+              "id": "03f4b6a3-d0d1-4d64-abb8-14c5015044c9",
+              "name": "text",
+              "value": "={{ $json.text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        -512,
+        96
+      ],
+      "id": "0b8179c8-5234-4307-b08b-efa793733384",
+      "name": "Edit Fields"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Get many messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many messages": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Get many labels",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many labels": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Add label to message",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Create a draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "053bfcbd-56a4-4217-879a-1610e5b87cb1",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "nodeGroups": [],
+  "id": "nfpCrxf3ok4HWwHg",
+  "tags": []
+}
